@@ -1,0 +1,28 @@
+name: hisba
+description: حِسبة - تطبيق احترافي لحساب ألعاب الورق والدومنة
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.5.3
+
+# يولّد أيقونة تطبيق حسبة لنظام Android فقط.
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/hisba_icon.png
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/icon/hisba_icon.png
+  adaptive_icon_background: '#061014'
+  adaptive_icon_foreground: assets/icon/hisba_icon.png
