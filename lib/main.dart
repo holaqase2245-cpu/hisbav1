@@ -145,7 +145,11 @@ class _SetupPageState extends State<SetupPage>{
   }
 
   @override Widget build(BuildContext context)=>Directionality(textDirection:TextDirection.rtl,child:Scaffold(appBar:AppBar(title:Text('إعداد ${widget.type}')),body:ListView(padding:const EdgeInsets.all(18),children:[
-    _section('عدد الجولات'),const SizedBox(height:10),Wrap(spacing:9,children:[3,5,7,10].map((n)=>ChoiceChip(label:Text('$n'),selected:rounds==n,onSelected:(_)=>setState(()=>rounds=n))).toList()),
+    _section('عدد الجولات'),const SizedBox(height:10),
+    if(widget.type=='ورق')
+      Wrap(spacing:9,children:[3,5,7,10].map((n)=>ChoiceChip(label:Text('$n'),selected:rounds==n,onSelected:(_)=>setState(()=>rounds=n))).toList())
+    else
+      Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(color:gold.withOpacity(.07),borderRadius:BorderRadius.circular(16),border:Border.all(color:gold.withOpacity(.25))),child:const Row(children:[Icon(Icons.all_inclusive_rounded,color:gold),SizedBox(width:9),Expanded(child:Text('الجولات مفتوحة — تستمر اللعبة تلقائياً إلى أن يصل أحد اللاعبين إلى 151 نقطة.'))])),
     const SizedBox(height:25),
     Row(children:[Expanded(child:_section('اللاعبون')),Text('${players.length}/8',style:const TextStyle(color:muted))]),
     const SizedBox(height:10),
@@ -236,13 +240,22 @@ class _ScorePageState extends State<ScorePage> {
         ? values.map((value) => value == 0 ? -25 : value).toList()
         : values;
 
+    bool finished = false;
+
     setState(() {
       history.add(List<int>.from(scored));
       for (var i = 0; i < totals.length; i++) {
         totals[i] += scored[i];
       }
 
-      if (round < widget.rounds) {
+      // الدومنة: عدد الجولات مفتوح، وتنتهي اللعبة عندما يصل أي لاعب إلى 151.
+      if (widget.type == 'دومنة') {
+        finished = totals.any((total) => total >= 151);
+      } else {
+        finished = history.length >= widget.rounds;
+      }
+
+      if (!finished) {
         round++;
         for (final controller in inputs) {
           controller.clear();
@@ -250,7 +263,7 @@ class _ScorePageState extends State<ScorePage> {
       }
     });
 
-    if (history.length == widget.rounds) {
+    if (finished) {
       setState(() => saving = true);
 
       await widget.store.add(
@@ -260,7 +273,8 @@ class _ScorePageState extends State<ScorePage> {
           date: DateTime.now(),
           players: List<String>.of(widget.players),
           rounds: history.map((r) => List<int>.from(r)).toList(),
-          totalRounds: widget.rounds,
+          // الدومنة مفتوحة؛ نخزن عدد الجولات الفعلي الذي لُعب.
+          totalRounds: widget.type == 'دومنة' ? history.length : widget.rounds,
         ),
       );
 
@@ -285,7 +299,7 @@ class _ScorePageState extends State<ScorePage> {
 
   @override
   Widget build(BuildContext context) {
-    final done = history.length == widget.rounds;
+    final done = widget.type == 'دومنة' ? totals.any((total) => total >= 151) : history.length >= widget.rounds;
     final width = MediaQuery.sizeOf(context).width;
 
     return Directionality(
@@ -398,7 +412,7 @@ class _ScorePageState extends State<ScorePage> {
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),
                       child: Text(
-                        'الجولة $round من ${widget.rounds}',
+                        widget.type == 'دومنة' ? 'الجولة $round • الهدف 151' : 'الجولة $round من ${widget.rounds}',
                         key: ValueKey(round),
                         style: const TextStyle(color: muted, fontSize: 13),
                       ),
@@ -432,7 +446,7 @@ class _ScorePageState extends State<ScorePage> {
                       : const Icon(Icons.check_rounded, key: ValueKey('check')),
                 ),
                 label: Text(
-                  round == widget.rounds ? 'حفظ وإنهاء الجولة' : 'حفظ الجولة',
+                  done ? 'انتهت اللعبة' : (widget.type == 'دومنة' ? 'حفظ الجولة' : (round == widget.rounds ? 'حفظ وإنهاء الجولة' : 'حفظ الجولة')),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -447,7 +461,9 @@ class _ScorePageState extends State<ScorePage> {
   }
 
   Widget _roundBadge() {
-    final progress = widget.rounds == 0 ? 0.0 : round / widget.rounds;
+    final progress = widget.type == 'دومنة'
+        ? 0.0
+        : (widget.rounds == 0 ? 0.0 : round / widget.rounds);
     return Container(
       width: 66,
       height: 66,
@@ -470,7 +486,7 @@ class _ScorePageState extends State<ScorePage> {
             ),
           ),
           Text(
-            '$round/${widget.rounds}',
+            widget.type == 'دومنة' ? '$round' : '$round/${widget.rounds}',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
           ),
         ],
@@ -495,7 +511,7 @@ class _ScorePageState extends State<ScorePage> {
             child: Text(
               widget.type == 'ورق'
                   ? 'في الورق: إدخال 0 يحسب -25 تلقائياً.'
-                  : 'أدخل النقاط كما هي، وتكدر تتراجع عن آخر جولة.',
+                  : 'الدومنة مفتوحة حتى 151 نقطة. أدخل النقاط كما هي وتكدر تتراجع عن آخر جولة.',
               style: const TextStyle(fontSize: 12.5, color: muted),
             ),
           ),
@@ -555,7 +571,7 @@ class _ScorePageState extends State<ScorePage> {
             width: 82,
             child: TextField(
               controller: inputs[i],
-              enabled: history.length < widget.rounds,
+              enabled: !done,
               keyboardType: const TextInputType.numberWithOptions(signed: true),
               textAlign: TextAlign.center,
               decoration: const InputDecoration(
@@ -630,7 +646,7 @@ class _ScorePageState extends State<ScorePage> {
     );
   }
 
-  List<Widget> _ranking() {
+  Widget _ranking() {
     final ranked = List.generate(
       widget.players.length,
       (i) => MapEntry(i, totals[i]),
@@ -679,7 +695,7 @@ class _ScorePageState extends State<ScorePage> {
               Text(
                 widget.type == 'ورق'
                     ? 'الصفر = -25 تلقائياً'
-                    : 'النقاط تُحفظ مع كل جولة',
+                    : 'الجولات مفتوحة حتى 151 نقطة',
                 style: const TextStyle(color: muted, fontSize: 12, height: 1.45),
               ),
             ],
@@ -692,39 +708,46 @@ class _ScorePageState extends State<ScorePage> {
             children: [
               const Text('الجولات', style: TextStyle(fontWeight: FontWeight.w900)),
               const SizedBox(height: 9),
-              ...List.generate(widget.rounds, (i) {
-                final active = i + 1 == round;
-                final finished = i + 1 <= history.length;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 7),
-                  child: Row(
-                    children: [
-                      Icon(
-                        finished
-                            ? Icons.check_circle_rounded
-                            : active
-                                ? Icons.radio_button_checked_rounded
-                                : Icons.radio_button_unchecked_rounded,
-                        size: 16,
-                        color: finished
-                            ? const Color(0xFF55E69D)
-                            : active
-                                ? gold
-                                : muted,
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        'الجولة ${i + 1}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: active ? Colors.white : muted,
-                          fontWeight: active ? FontWeight.bold : FontWeight.normal,
+              if (widget.type == 'دومنة')
+                Row(children:[
+                  Icon(done ? Icons.check_circle_rounded : Icons.all_inclusive_rounded, size:16, color: done ? const Color(0xFF55E69D) : gold),
+                  const SizedBox(width:7),
+                  Text(done ? 'انتهت عند الجولة $round' : 'الجولة $round من عدد مفتوح', style: const TextStyle(fontSize:12,color:muted)),
+                ])
+              else
+                ...List.generate(widget.rounds, (i) {
+                  final active = i + 1 == round;
+                  final finishedRound = i + 1 <= history.length;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: Row(
+                      children: [
+                        Icon(
+                          finishedRound
+                              ? Icons.check_circle_rounded
+                              : active
+                                  ? Icons.radio_button_checked_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                          size: 16,
+                          color: finishedRound
+                              ? const Color(0xFF55E69D)
+                              : active
+                                  ? gold
+                                  : muted,
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                        const SizedBox(width: 7),
+                        Text(
+                          'الجولة ${i + 1}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: active ? Colors.white : muted,
+                            fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
             ],
           ),
         ),
@@ -751,7 +774,7 @@ class _ScorePageState extends State<ScorePage> {
           if (ranked.isEmpty)
             const Text('—', style: TextStyle(color: muted))
           else
-            ...ranked.take(5).asMap().entries.map(
+            ...ranked.take(5).toList().asMap().entries.map(
               (entry) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
@@ -782,7 +805,7 @@ class _ScorePageState extends State<ScorePage> {
                   ],
                 ),
               ),
-            ).toList(),
+            ),
         ],
       ),
     );
