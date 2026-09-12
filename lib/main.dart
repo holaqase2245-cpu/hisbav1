@@ -103,37 +103,503 @@ class GameRecord {
 String dateLabel(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
 class HomePage extends StatefulWidget {
-  final HisbaStore store; final VoidCallback onTheme;
+  final HisbaStore store;
+  final VoidCallback onTheme;
   const HomePage({super.key, required this.store, required this.onTheme});
-  @override State<HomePage> createState()=>_HomePageState();
+
+  @override
+  State<HomePage> createState() => _HomePageState();
 }
-class _HomePageState extends State<HomePage> {
-  int tab=0;
-  @override Widget build(BuildContext context) => Directionality(textDirection: TextDirection.rtl, child: Scaffold(
-    body: SafeArea(child: IndexedStack(index: tab, children:[
-      _home(), HistoryPage(store:widget.store, onChanged:()=>setState((){})), StatsPage(store:widget.store),
-    ])),
-    bottomNavigationBar: NavigationBar(selectedIndex:tab,onDestinationSelected:(i)=>setState(()=>tab=i),destinations:const[
-      NavigationDestination(icon:Icon(Icons.home_outlined),selectedIcon:Icon(Icons.home),label:'الرئيسية'),
-      NavigationDestination(icon:Icon(Icons.history),label:'السجل'),
-      NavigationDestination(icon:Icon(Icons.insights_outlined),selectedIcon:Icon(Icons.insights),label:'الإحصائيات'),
-    ]),
-  ));
-  Widget _home()=>ListView(padding:const EdgeInsets.fromLTRB(18,12,18,30),children:[
-    Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('حِسبة',style:TextStyle(fontSize:42,fontWeight:FontWeight.w900)),Text('خلّي الحسبة علينا',style:TextStyle(color:muted,fontSize:16))])),IconButton(onPressed:widget.onTheme,icon:const Icon(Icons.dark_mode_outlined))]),
-    const SizedBox(height:24),
-    _hero(), const SizedBox(height:16),
-    _gameCard(Icons.style_rounded,'لعبة ورق','3 / 5 / 7 جولات • صفر = -25',accent,()=>_openSetup('ورق')),
-    const SizedBox(height:12), _gameCard(Icons.grid_view_rounded,'دومنة','نظام نقاط مرن وسجل كامل',gold,()=>_openSetup('دومنة')),
-    const SizedBox(height:22),
-    Row(children:[Expanded(child:Text('آخر الألعاب',style:TextStyle(fontSize:20,fontWeight:FontWeight.bold))),TextButton(onPressed:()=>setState(()=>tab=1),child:const Text('عرض الكل'))]),
-    if(widget.store.records.isEmpty) _empty() else ...widget.store.records.take(3).map((g)=>_recordTile(g)),
-  ]);
-  Widget _hero()=>Container(padding:const EdgeInsets.all(20),decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF143038),Color(0xFF0B181D)]),borderRadius:BorderRadius.circular(24),border:Border.all(color:line)),child:Row(children:[Container(width:56,height:56,decoration:BoxDecoration(color:accent.withOpacity(.12),borderRadius:BorderRadius.circular(18)),child:const Icon(Icons.calculate_rounded,color:accent,size:30)),const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('احسب أسرع، العب أكثر',style:TextStyle(fontSize:19,fontWeight:FontWeight.bold)),SizedBox(height:5),Text('نقاطك محفوظة وسجل الجولات دائماً بيدك.',style:TextStyle(color:muted,height:1.4))]))]));
-  Widget _gameCard(IconData icon,String title,String sub,Color c,VoidCallback tap)=>Material(color:Colors.transparent,child:InkWell(onTap:tap,borderRadius:BorderRadius.circular(22),child:Ink(padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:panel,borderRadius:BorderRadius.circular(22),border:Border.all(color:line)),child:Row(children:[Container(width:56,height:56,decoration:BoxDecoration(color:c.withOpacity(.12),borderRadius:BorderRadius.circular(17)),child:Icon(icon,color:c,size:29)),const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:19,fontWeight:FontWeight.bold)),const SizedBox(height:4),Text(sub,style:TextStyle(color:muted))])),Icon(Icons.chevron_left_rounded,color:muted)]))));
-  Widget _recordTile(GameRecord g)=>Container(margin:const EdgeInsets.only(bottom:9),padding:const EdgeInsets.symmetric(horizontal:14,vertical:13),decoration:BoxDecoration(color:panel,borderRadius:BorderRadius.circular(17),border:Border.all(color:line)),child:Row(children:[CircleAvatar(radius:22,backgroundColor:g.type=='ورق'?accent.withOpacity(.12):gold.withOpacity(.12),child:Icon(g.type=='ورق'?Icons.style:Icons.grid_view,color:g.type=='ورق'?accent:gold)),const SizedBox(width:12),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(g.type,style:const TextStyle(fontWeight:FontWeight.bold)),Text('${g.players.length} لاعبين • ${g.rounds.length}/${g.totalRounds} جولات • ${dateLabel(g.date)}',style:TextStyle(color:muted,fontSize:12))])),Text('${g.totals.reduce((a,b)=>a>b?a:b)}',style:const TextStyle(fontWeight:FontWeight.bold,fontSize:17))]));
-  Widget _empty()=>Container(padding:const EdgeInsets.all(20),decoration:BoxDecoration(color:panel,borderRadius:BorderRadius.circular(18),border:Border.all(color:line)),child:Text('ماكو ألعاب محفوظة بعد. ابدأ أول حسبة من فوق.',style:TextStyle(color:muted)));
-  void _openSetup(String type)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>SetupPage(store:widget.store,type:type)));
+
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  int tab = 0;
+  late final AnimationController intro;
+
+  @override
+  void initState() {
+    super.initState();
+    intro = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    intro.dispose();
+    super.dispose();
+  }
+
+  void _click() {
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.selectionClick();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        extendBody: true,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: SafeArea(
+          bottom: false,
+          child: IndexedStack(
+            index: tab,
+            children: [
+              _home(),
+              HistoryPage(store: widget.store, onChanged: () => setState(() {})),
+              StatsPage(store: widget.store),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _bottomBar(),
+      ),
+    );
+  }
+
+  Widget _bottomBar() {
+    final items = [
+      (Icons.home_rounded, 'الرئيسية'),
+      (Icons.history_rounded, 'السجل'),
+      (Icons.insights_rounded, 'الإحصائيات'),
+    ];
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: panel.withOpacity(.96),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: line),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(.28),
+                blurRadius: 26,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: items.asMap().entries.map((e) {
+              final active = tab == e.key;
+              return Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () {
+                    _click();
+                    setState(() => tab = e.key);
+                  },
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: active ? accent.withOpacity(.13) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(e.value.$1, color: active ? accent : muted, size: 23),
+                          const SizedBox(width: 7),
+                          AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 220),
+                            style: TextStyle(
+                              color: active ? accent : muted,
+                              fontSize: 12,
+                              fontWeight: active ? FontWeight.w900 : FontWeight.w600,
+                            ),
+                            child: Text(e.value.$2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _home() {
+    return AnimatedBuilder(
+      animation: intro,
+      builder: (context, child) {
+        final eased = Curves.easeOutCubic.transform(intro.value);
+        return Opacity(
+          opacity: eased,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - eased)),
+            child: child,
+          ),
+        );
+      },
+      child: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 106),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'حسبة',
+                      style: TextStyle(
+                        fontSize: 38,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -.8,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'خلّينا نخلي كل نقطة إلها معنى.',
+                      style: TextStyle(color: muted, fontSize: 14.5),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  _click();
+                  widget.onTheme();
+                },
+                style: IconButton.styleFrom(
+                  backgroundColor: panel,
+                  side: BorderSide(color: line),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                ),
+                icon: Icon(
+                  lightMode(context) ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  color: lightMode(context) ? Colors.indigo : gold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          _heroModern(),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'ابدأ اللعب',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                'سريع • واضح • محفوظ',
+                style: TextStyle(color: muted, fontSize: 11.5, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _modernGameCard(
+            type: 'ورق',
+            title: 'لعبة ورق',
+            subtitle: '3 / 5 / 7 / 10 جولات',
+            icon: Icons.style_rounded,
+            accentColor: accent,
+            extra: 'الصفر = -25',
+          ),
+          const SizedBox(height: 12),
+          _modernGameCard(
+            type: 'دومنة',
+            title: 'دومنة 151',
+            subtitle: 'جولات مفتوحة حتى 151',
+            icon: Icons.grid_view_rounded,
+            accentColor: gold,
+            extra: 'تراجع عن الجولة متاح',
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              const Expanded(
+                child: Text('آخر الألعاب', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              ),
+              TextButton(
+                onPressed: () {
+                  _click();
+                  setState(() => tab = 1);
+                },
+                child: const Text('عرض السجل'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          if (widget.store.records.isEmpty)
+            _emptyModern()
+          else
+            ...widget.store.records.take(3).map(_recentCard),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroModern() {
+    final games = widget.store.records.length;
+    return Container(
+      height: 186,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [Color(0xFF12353C), Color(0xFF0B1A20), Color(0xFF0E161A)],
+        ),
+        border: Border.all(color: const Color(0xFF23464D)),
+        boxShadow: [
+          BoxShadow(color: accent.withOpacity(.07), blurRadius: 30, spreadRadius: 1),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            left: -8,
+            top: -18,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: accent.withOpacity(.08),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: gold.withOpacity(.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: gold.withOpacity(.18)),
+                          ),
+                          child: const Text(
+                            'جاهز للعب؟',
+                            style: TextStyle(color: gold, fontSize: 11, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        if (games > 0)
+                          Text(
+                            '$games لعبة محفوظة',
+                            style: TextStyle(color: muted, fontSize: 11),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'حسبة مرتبة\nبدون تعقيد.',
+                      style: TextStyle(fontSize: 26, height: 1.06, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      'النقاط، الجولات، والفائز… كلشي يصير تلقائي.',
+                      style: TextStyle(color: muted, height: 1.35, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _heroDice(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroDice() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: .86, end: 1),
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.elasticOut,
+      builder: (_, value, child) => Transform.scale(scale: value, child: child),
+      child: Container(
+        width: 86,
+        height: 86,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(25),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF39D7C1), Color(0xFF148C83)],
+          ),
+          boxShadow: [BoxShadow(color: accent.withOpacity(.26), blurRadius: 24, spreadRadius: 1)],
+        ),
+        child: const Center(
+          child: Icon(Icons.calculate_rounded, color: Colors.white, size: 43),
+        ),
+      ),
+    );
+  }
+
+  Widget _modernGameCard({
+    required String type,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color accentColor,
+    required String extra,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () {
+          _click();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => SetupPage(store: widget.store, type: type)),
+          ).then((_) => setState(() {}));
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: panel,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: line),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [accentColor.withOpacity(.24), accentColor.withOpacity(.08)],
+                  ),
+                  borderRadius: BorderRadius.circular(19),
+                  border: Border.all(color: accentColor.withOpacity(.16)),
+                ),
+                child: Icon(icon, color: accentColor, size: 30),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: TextStyle(color: muted, fontSize: 13)),
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: accentColor.withOpacity(.08),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Text(
+                            extra,
+                            style: TextStyle(color: accentColor, fontSize: 10.5, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(color: panel2, borderRadius: BorderRadius.circular(13)),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, size: 15),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _recentCard(GameRecord g) {
+    final best = g.totals.isEmpty ? 0 : g.totals.reduce((a, b) => a > b ? a : b);
+    final c = g.type == 'ورق' ? accent : gold;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+      decoration: BoxDecoration(
+        color: panel,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 43,
+            height: 43,
+            decoration: BoxDecoration(
+              color: c.withOpacity(.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(g.type == 'ورق' ? Icons.style_rounded : Icons.grid_view_rounded, color: c, size: 22),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(g.type == 'ورق' ? 'لعبة ورق' : 'دومنة 151', style: const TextStyle(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 3),
+                Text(
+                  '${g.players.length} لاعبين • ${g.rounds.length} جولات • ${dateLabel(g.date)}',
+                  style: TextStyle(color: muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$best',
+            style: TextStyle(color: c, fontWeight: FontWeight.w900, fontSize: 19),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyModern() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: panel,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: line),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.sports_score_rounded, color: gold, size: 30),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'ماكو ألعاب محفوظة بعد. اختار ورق أو دومنة وخلّينا نبدأ.',
+              style: TextStyle(color: muted, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class SetupPage extends StatefulWidget { final HisbaStore store; final String type; const SetupPage({super.key,required this.store,required this.type}); @override State<SetupPage> createState()=>_SetupPageState(); }
@@ -260,6 +726,8 @@ class _ScorePageState extends State<ScorePage> {
   }
 
   Future<void> saveRound() async {
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.selectionClick();
     final values = inputs
         .map((controller) => int.tryParse(controller.text.trim()) ?? 0)
         .toList();
@@ -905,36 +1373,52 @@ class _WinnerDialogState extends State<_WinnerDialog>
   late final AnimationController controller;
   final particles = <_FireworkParticle>[];
   final random = math.Random();
+  int burstSeed = 0;
 
   @override
   void initState() {
     super.initState();
     controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 5),
     )..addListener(() {
         if (mounted) setState(() {});
       });
-    _seed();
-    controller.forward();
+    _seed(initial: true);
+    controller.repeat();
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.heavyImpact();
   }
 
-  void _seed() {
-    for (var burst = 0; burst < 7; burst++) {
-      final cx = .15 + random.nextDouble() * .7;
-      final cy = .12 + random.nextDouble() * .48;
-      for (var i = 0; i < 30; i++) {
-        final a = (math.pi * 2 * i / 30) + random.nextDouble() * .18;
+  void _seed({bool initial = false}) {
+    if (!initial) burstSeed++;
+    final bursts = initial ? 7 : 3;
+    for (var burst = 0; burst < bursts; burst++) {
+      final cx = .12 + random.nextDouble() * .76;
+      final cy = .08 + random.nextDouble() * .55;
+      final baseDelay = (burst + burstSeed) * .085;
+      for (var i = 0; i < 42; i++) {
+        final a = (math.pi * 2 * i / 42) + random.nextDouble() * .10;
+        final speed = .08 + random.nextDouble() * .25;
         particles.add(_FireworkParticle(
           x: cx,
           y: cy,
-          vx: math.cos(a) * (.08 + random.nextDouble() * .22),
-          vy: math.sin(a) * (.08 + random.nextDouble() * .22),
-          delay: burst * .09 + random.nextDouble() * .22,
-          size: 1.5 + random.nextDouble() * 2.8,
+          vx: math.cos(a) * speed,
+          vy: math.sin(a) * speed,
+          delay: baseDelay + random.nextDouble() * .34,
+          size: 1.5 + random.nextDouble() * 3.2,
         ));
       }
     }
+    if (particles.length > 900) {
+      particles.removeRange(0, particles.length - 900);
+    }
+  }
+
+  void _celebrate() {
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.heavyImpact();
+    _seed();
   }
 
   @override
@@ -947,70 +1431,125 @@ class _WinnerDialogState extends State<_WinnerDialog>
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: SizedBox(
-        height: 470,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            CustomPaint(painter: _FireworksPainter(particles, controller.value)),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GestureDetector(
+        onTap: _celebrate,
+        child: SizedBox(
+          height: 560,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0B171B).withOpacity(.94),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: gold.withOpacity(.55), width: 1.4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: gold.withOpacity(.18),
-                      blurRadius: 35,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.emoji_events_rounded, color: gold, size: 78),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'الفائز',
-                      style: TextStyle(
-                        color: gold,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.name,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${widget.score} نقطة',
-                      style: const TextStyle(
-                        color: Color(0xFF55E69D),
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('متابعة'),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(32),
+                  gradient: const RadialGradient(
+                    center: Alignment.topCenter,
+                    radius: 1.05,
+                    colors: [Color(0xFF173B42), Color(0xFF0A151A), Color(0xFF05090C)],
+                  ),
+                  border: Border.all(color: gold.withOpacity(.34)),
                 ),
               ),
-            ),
-          ],
+              CustomPaint(
+                painter: _FireworksPainter(particles, controller.value),
+              ),
+              Center(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: .82, end: 1),
+                  duration: const Duration(milliseconds: 720),
+                  curve: Curves.elasticOut,
+                  builder: (_, scale, child) => Transform.scale(scale: scale, child: child),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 18),
+                    padding: const EdgeInsets.fromLTRB(22, 27, 22, 20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xF20A1418),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: gold.withOpacity(.55), width: 1.4),
+                      boxShadow: [
+                        BoxShadow(color: gold.withOpacity(.15), blurRadius: 40, spreadRadius: 1),
+                        BoxShadow(color: accent.withOpacity(.10), blurRadius: 28, spreadRadius: -2),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 94,
+                          height: 94,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFFFFD77A), Color(0xFFC98C24)],
+                            ),
+                            boxShadow: [
+                              BoxShadow(color: gold.withOpacity(.30), blurRadius: 28, spreadRadius: 2),
+                            ],
+                          ),
+                          child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 54),
+                        ),
+                        const SizedBox(height: 15),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: gold.withOpacity(.10),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: gold.withOpacity(.16)),
+                          ),
+                          child: const Text(
+                            '🎉  تهانينا  🎉',
+                            style: TextStyle(color: gold, fontSize: 14, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'الفائز',
+                          style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          widget.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '${widget.score} نقطة',
+                          style: const TextStyle(color: Color(0xFF55E69D), fontSize: 21, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'اضغط على الشاشة حتى تطلق دفعة ألعاب نارية جديدة ✨',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: muted, fontSize: 10.5, height: 1.35),
+                        ),
+                        const SizedBox(height: 17),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: FilledButton.icon(
+                            onPressed: () {
+                              SystemSound.play(SystemSoundType.click);
+                              Navigator.pop(context);
+                            },
+                            icon: const Icon(Icons.arrow_forward_rounded),
+                            label: const Text(
+                              'استمرار',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1037,20 +1576,39 @@ class _FireworksPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final p in particles) {
-      final double t = ((progress - p.delay) / .65).clamp(0.0, 1.0).toDouble();
-      if (t <= 0) continue;
+      final double local = (progress - p.delay) / .78;
+      if (local <= 0) continue;
+      final double t = local.clamp(0.0, 1.0).toDouble();
       final x = (p.x + p.vx * t) * size.width;
-      final y = (p.y + p.vy * t + .24 * t * t) * size.height;
+      final y = (p.y + p.vy * t + .18 * t * t) * size.height;
       final double opacity = (1 - t).clamp(0.0, 1.0).toDouble();
       final paint = Paint()
-        ..color = Color.lerp(gold, Colors.white, (p.size / 5).clamp(0.0, 1.0).toDouble())!
-            .withOpacity(opacity)
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(x, y), p.size * (1 - t * .45), paint);
+        ..color = Color.lerp(
+          [gold, accent, const Color(0xFFFF6BC7), const Color(0xFF7DB7FF)][p.size.toInt() % 4],
+          Colors.white,
+          (p.size / 5).clamp(0.0, 1.0).toDouble(),
+        )!.withOpacity(opacity)
+        ..style = PaintingStyle.fill
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2);
+      final radius = p.size * (1.15 - t * .55);
+      canvas.drawCircle(Offset(x, y), radius, paint);
+
+      if (t < .85) {
+        final tailPaint = Paint()
+          ..color = paint.color.withOpacity(opacity * .32)
+          ..strokeWidth = math.max(0.6, p.size * .45)
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(
+          Offset(x, y),
+          Offset(x - p.vx * size.width * .06, y - p.vy * size.height * .06),
+          tailPaint,
+        );
+      }
     }
   }
 
   @override
   bool shouldRepaint(covariant _FireworksPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+      oldDelegate.progress != progress || oldDelegate.particles.length != particles.length;
 }
+
