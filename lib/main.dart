@@ -646,7 +646,7 @@ class _ScorePageState extends State<ScorePage> {
     );
   }
 
-  List<Widget> _ranking() {
+  Widget _ranking() {
     final ranked = List.generate(
       widget.players.length,
       (i) => MapEntry(i, totals[i]),
