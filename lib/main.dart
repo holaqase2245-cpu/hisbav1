@@ -346,7 +346,7 @@ class _ScorePageState extends State<ScorePage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 220, child: _sidePanel()),
+          SizedBox(width: 220, child: _sidePanel(done)),
           const SizedBox(width: 14),
           Expanded(child: _scoreCard(done)),
           const SizedBox(width: 14),
@@ -364,7 +364,7 @@ class _ScorePageState extends State<ScorePage> {
         const SizedBox(height: 14),
         _leaderPanel(),
         const SizedBox(height: 14),
-        _sidePanel(),
+        _sidePanel(done),
       ],
     );
   }
@@ -681,7 +681,7 @@ class _ScorePageState extends State<ScorePage> {
     }).toList();
   }
 
-  Widget _sidePanel() {
+  Widget _sidePanel(bool done) {
     return Column(
       children: [
         _surface(
