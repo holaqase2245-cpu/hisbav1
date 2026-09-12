@@ -19,10 +19,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -30,30 +31,26 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Extract project
-        run: |
-          unzip -q hisba_github_ready_v2.zip
-          cd hisba_android
-          flutter pub get
+      - name: Create Android project
+        run: flutter create --platforms=android .
 
-      - name: Disable iOS
-        run: |
-          sed -i 's/ios: true/ios: false/' hisba_android/pubspec.yaml
+      - name: Get packages
+        run: flutter pub get
 
-      - name: Prepare Android project
-        working-directory: hisba_android
+      - name: Set Arabic app name
         run: |
-          chmod +x tool/prepare_android.sh
-          ./tool/prepare_android.sh
+          sed -i 's/android:label="hisba"/android:label="حسبة"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Generate app icon
+        run: dart run flutter_launcher_icons
 
       - name: Build Android APK
-        working-directory: hisba_android
         run: flutter build apk --release
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: Hisba-APK
-          path: hisba_android/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 30
