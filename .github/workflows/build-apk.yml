@@ -36,17 +36,21 @@ jobs:
           cd hisba_android
           flutter pub get
 
+      - name: Disable iOS
+        run: |
+          sed -i 's/ios: true/ios: false/' hisba_android/pubspec.yaml
+
       - name: Prepare Android project
         working-directory: hisba_android
         run: |
           chmod +x tool/prepare_android.sh
           ./tool/prepare_android.sh
 
-      - name: Build release APK
+      - name: Build Android APK
         working-directory: hisba_android
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: Hisba-APK
