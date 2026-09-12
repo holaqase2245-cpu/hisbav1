@@ -31,21 +31,26 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Extract project
+        run: |
+          unzip -q hisba_github_ready_v2.zip
+          cd hisba_android
+          flutter pub get
+
       - name: Prepare Android project
+        working-directory: hisba_android
         run: |
           chmod +x tool/prepare_android.sh
           ./tool/prepare_android.sh
 
       - name: Build release APK
+        working-directory: hisba_android
         run: flutter build apk --release
-
-      - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Hisba.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Hisba-APK
-          path: build/app/outputs/flutter-apk/Hisba.apk
+          path: hisba_android/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 30
